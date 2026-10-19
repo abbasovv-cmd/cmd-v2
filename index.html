@@ -1,0 +1,80 @@
+<!DOCTYPE html><html lang="az"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mafya Məhəlləsi</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#15110d;color:#eee;font:15px system-ui;height:100dvh;display:flex;flex-direction:column}
+#top{padding:8px 12px;background:#2a1d10;display:flex;gap:8px;align-items:center}#top b{flex:1}
+#view{flex:1;overflow:auto;padding:10px;display:flex;flex-direction:column;min-height:0}
+nav{display:flex;background:#2a1d10;overflow-x:auto}nav button{flex:1;padding:12px 8px;white-space:nowrap;border-radius:0}
+button,input,select,label{background:#3a2a18;color:#eee;border:1px solid #6b4a1e;border-radius:8px;padding:8px;font:inherit}
+button,label{background:#8a5a14;cursor:pointer}nav button.a{background:#c98a1c;color:#000}
+.card{background:#241a10;border-radius:10px;padding:10px;margin:6px 0}
+.av{width:36px;height:36px;border-radius:50%;object-fit:cover;background:#555;flex:none}
+#msgs{flex:1;overflow:auto;min-height:120px}.m{display:flex;gap:8px;margin:6px 0}.m i{color:#c98a1c;font-size:12px}.mm{max-width:220px;border-radius:8px;display:block}
+.row{display:flex;gap:6px;margin-top:6px}.row input{flex:1;min-width:0}
+.cd{display:inline-block;background:#fff;color:#000;border-radius:5px;padding:4px 6px;margin:2px;font-weight:700}.red{color:#c00}
+#toast{position:fixed;top:50px;left:50%;transform:translateX(-50%);background:#c98a1c;color:#000;padding:8px 14px;border-radius:8px;display:none;z-index:9}
+</style></head><body>
+<div id=top></div><div id=view></div><nav id=nav></nav><div id=toast></div><audio id=ra autoplay></audio>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const $=q=>document.querySelector(q),S=io(),esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),fmt=n=>Number(n).toLocaleString('en-US');
+let me,R=[],SH={},U=[],room='lobby',tab='chat',BJ=null,hist=[];
+const toast=t=>{const e=$('#toast');e.textContent=t;e.style.display='block';setTimeout(()=>e.style.display='none',2500)};
+const act=(ev,d)=>S.emit(ev,d,r=>r&&r.msg&&toast(r.msg));
+const up=async(f,ext)=>(await(await fetch('/up?ext='+ext,{method:'POST',body:f})).json()).url;
+const val=h=>{let t=0,a=0;for(const c of h){if(c.h)continue;t+=c.r>10?10:c.r==1?11:c.r;if(c.r==1)a++}while(t>21&&a--)t-=10;return t};
+// ---------- giriş ----------
+function loginUI(){$('#top').innerHTML='<b>🕶️ Mafya Məhəlləsi</b>';$('#nav').innerHTML='';
+$('#view').innerHTML=`<div class=card><h3>Yeni hesab</h3><input id=nm placeholder="Adın" style="width:100%"><div class=row><input id=ph type=file accept="image/*"></div><div class=row><button id=rg>Qeydiyyat</button></div></div><div class=card><h3>ID ilə giriş (başqa telefon)</h3><div class=row><input id=lid placeholder="Kimlik nömrən" inputmode=numeric><button id=lg>Giriş</button></div></div>`;
+$('#rg').onclick=async()=>{const f=$('#ph').files[0];const photo=f?await up(f,(f.name.split('.').pop()||'jpg').toLowerCase()):'';
+S.emit('reg',{name:$('#nm').value,photo},r=>{if(!r.ok)return toast(r.msg);localStorage.mid=r.id;alert('Kimlik nömrən: '+r.id+'\nBaşqa telefondan girmək üçün saxla!')})};
+$('#lg').onclick=()=>S.emit('login',{id:$('#lid').value},r=>r.ok?localStorage.mid=r.id:toast(r.msg))}
+S.on('connect',()=>{if(localStorage.mid)S.emit('login',{id:localStorage.mid},r=>{if(!r.ok){delete localStorage.mid;loginUI()}});else if(!me)loginUI()});
+S.on('me',m=>{me=m;$('#top').innerHTML=`<img class=av src="${esc(m.photo)}"><b>${esc(m.name)} <i style="color:#c98a1c">${esc(m.rank)}</i><br>💰 ${fmt(m.money)}${m.debt?' · borc '+fmt(m.debt):''} · ID ${m.id}</b>`;if(tab=='bank'||tab=='shop')draw()});
+S.on('init',d=>{R=d.ranks;SH=d.shop;hist=d.chat;const T=[['chat','💬 Çat'],['bj','🃏 Blackjack'],['work','🛠️ İşlər'],['shop','🛒 Mağaza'],['bank','🏦 Bank'],['mem','👥 Üzvlər']];
+$('#nav').innerHTML=T.map(([k,l])=>`<button id=t_${k}>${l}</button>`).join('');T.forEach(([k])=>$('#t_'+k).onclick=()=>{tab=k;draw()});draw()});
+S.on('users',u=>{U=u;if(tab=='mem'||tab=='bank')draw()});
+S.on('msg',m=>{if(m.room=='lobby')hist.push(m);addMsg(m)});
+S.on('bj',b=>{BJ=b;if(tab=='bj')drawBJ()});
+// ---------- çat ----------
+const media=x=>x.type=='image'?`<img src="${esc(x.url)}" class=mm>`:x.type=='video'?`<video src="${esc(x.url)}" controls playsinline class=mm></video>`:`<audio src="${esc(x.url)}" controls></audio>`;
+function addMsg(m){if(m.room!=room)return;const b=$('#msgs');if(!b)return;const d=document.createElement('div');d.className='m';
+d.innerHTML=`<img class=av src="${esc(m.photo)}"><div><b>${esc(m.name)}</b> <i>${esc(m.rank)}</i><br>${esc(m.text)}${m.media?media(m.media):''}</div>`;b.append(d);b.scrollTop=1e9}
+const chatHTML=()=>`<div id=msgs></div><div class=row><label>📎<input id=fl type=file accept="image/*,video/*" hidden></label><button id=mic>🎤</button><input id=tx placeholder="Mesaj..."><button id=sd>➤</button></div>`;
+function wireChat(){const send=()=>{const t=$('#tx').value.trim();if(t)S.emit('msg',{room,text:t});$('#tx').value=''};
+$('#sd').onclick=send;$('#tx').onkeydown=e=>e.key=='Enter'&&send();$('#mic').onclick=mic;
+$('#fl').onchange=async e=>{const f=e.target.files[0];if(!f)return;toast('Yüklənir...');const ext=(f.name.split('.').pop()||'bin').toLowerCase();
+S.emit('msg',{room,media:{type:f.type.startsWith('video')?'video':'image',url:await up(f,ext)}})}}
+let rec,ch;async function mic(){if(rec&&rec.state=='recording')return rec.stop();
+try{const st=await navigator.mediaDevices.getUserMedia({audio:true});
+const mt=['audio/webm;codecs=opus','audio/mp4','audio/webm'].find(t=>MediaRecorder.isTypeSupported(t));
+rec=new MediaRecorder(st,mt?{mimeType:mt}:{});ch=[];rec.ondataavailable=e=>ch.push(e.data);
+rec.onstop=async()=>{st.getTracks().forEach(t=>t.stop());const type=rec.mimeType||mt||'audio/webm';$('#mic').textContent='🎤';
+S.emit('msg',{room,media:{type:'audio',url:await up(new Blob(ch,{type}),type.includes('mp4')?'m4a':'webm')}})};
+rec.start();$('#mic').textContent='⏹'}catch{toast('Mikrofon icazəsi lazımdır (HTTPS)')}}
+// ---------- blackjack ----------
+const cs=c=>c.h?'<span class=cd>🂠</span>':`<span class="cd ${c.s==1||c.s==2?'red':''}">${['','A',2,3,4,5,6,7,8,9,10,'J','Q','K'][c.r]}${'♠♥♦♣'[c.s]}</span>`;
+function drawBJ(){const e=$('#bjt');if(!e||!BJ)return;
+e.innerHTML=`<div class=card>Dilər: ${BJ.d.map(cs).join('')} ${BJ.ph=='done'?'('+val(BJ.d)+')':''}</div>`+BJ.p.map(p=>`<div class=card>${esc(p.name)} 💰${fmt(p.bet)} ${p.h.map(cs).join('')} (${p.v}) ${p.st||''} ${BJ.turn==p.id?'⬅️':''}</div>`).join('')+
+`<div class=row><input id=bb type=number placeholder="Mərc (limitsiz)"><button onclick="act('bjbet',{amt:$('#bb').value})">Mərc</button><button onclick="S.emit('bjdeal')">Payla</button>${BJ.turn==me.id?`<button onclick="S.emit('bjhit')">Kart</button><button onclick="S.emit('bjstand')">Dayan</button>`:''}</div>`}
+// ---------- zəng (WebRTC 1:1) ----------
+let pc,ls,q=[];
+async function mkpc(to){ls=await navigator.mediaDevices.getUserMedia({audio:true});pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+ls.getTracks().forEach(t=>pc.addTrack(t,ls));pc.onicecandidate=e=>e.candidate&&S.emit('sig',{to,d:{ice:e.candidate}});pc.ontrack=e=>$('#ra').srcObject=e.streams[0];
+document.body.insertAdjacentHTML('beforeend','<button id=hg style="position:fixed;right:10px;bottom:70px;background:#c00">📵 Bitir</button>');$('#hg').onclick=()=>{S.emit('sig',{to,d:{bye:1}});hang()}}
+const hang=()=>{pc&&pc.close();pc=null;ls&&ls.getTracks().forEach(t=>t.stop());$('#hg')&&$('#hg').remove()};
+async function call(to){await mkpc(to);const o=await pc.createOffer();await pc.setLocalDescription(o);S.emit('sig',{to,d:{sdp:o}})}
+const flush=()=>q.splice(0).forEach(c=>pc.addIceCandidate(c));
+S.on('sig',async({from,name,d})=>{
+if(d.sdp&&d.sdp.type=='offer'){if(!confirm(name+' zəng edir. Cavab verirsən?'))return S.emit('sig',{to:from,d:{bye:1}});await mkpc(from);await pc.setRemoteDescription(d.sdp);flush();const a=await pc.createAnswer();await pc.setLocalDescription(a);S.emit('sig',{to:from,d:{sdp:a}})}
+else if(d.sdp){await pc.setRemoteDescription(d.sdp);flush()}
+else if(d.ice){pc&&pc.remoteDescription?pc.addIceCandidate(d.ice):q.push(d.ice)}
+else if(d.bye)hang()});
+// ---------- səhifələr ----------
+function draw(){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('a',b.id=='t_'+tab));const v=$('#view');
+if(tab=='chat'||tab=='bj'){room=tab=='bj'?'bj':'lobby';v.innerHTML=(tab=='bj'?'<div id=bjt></div>':'')+chatHTML();wireChat();
+if(tab=='bj'){S.emit('bjjoin');drawBJ()}else hist.forEach(addMsg)}
+else if(tab=='work')v.innerHTML=`<div class=card><button onclick="act('salary')">💵 Rütbə maaşı (60s)</button></div>`+[['cay','☕ Çayçı'],['masin','🔧 Maşın ustası'],['xala','🧺 Xaladelnik ustasının dükanı'],['bazar','🛒 Bazar'],['dark','🕶️ Yeraltı iş (min 300 000, risk var)']].map(([k,l])=>`<div class=card><button onclick="act('work',{biz:'${k}'})">${l}</button></div>`).join('');
+else if(tab=='shop')v.innerHTML=[['cig','🚬 Siqaretlər'],['whisky','🥃 Viskilər'],['vodka','🍸 Araqlar'],['qeh','🏮 Qəhbəxana']].map(([c,l])=>`<h3>${l}</h3>`+SH[c].map(([n,p],i)=>{const lock=c!='qeh'&&me.ri>3+i*3;return`<div class=card>${esc(n)} — ${fmt(p)} <button ${lock?'disabled':''} onclick="act('buy',{cat:'${c}',i:${i}})">${lock?'🔒 rütbə':'Al'}</button></div>`}).join('')).join('');
+else if(tab=='bank')v.innerHTML=`<div class=card><h3>🏦 Bank</h3>Balans: ${fmt(me.money)}<br>Borc: ${fmt(me.debt)}</div><div class=card><h3>Pul göndər</h3><select id=to>${U.filter(u=>u.id!=me.id).map(u=>`<option value=${u.id}>${esc(u.name)}</option>`).join('')}</select><div class=row><input id=am type=number placeholder="Məbləğ"><button onclick="act('pay',{to:$('#to').value,amt:$('#am').value})">Göndər</button></div></div><div class=card><h3>Kredit (maks 5 000 000)</h3><div class=row><input id=ln type=number placeholder="Məbləğ"><button onclick="act('loan',{amt:$('#ln').value})">Al</button><button onclick="act('repay',{amt:$('#ln').value})">Ödə</button></div></div>`;
+else v.innerHTML=U.map(u=>`<div class=card style="display:flex;gap:8px;align-items:center"><img class=av src="${esc(u.photo)}"><div style="flex:1">${u.on?'🟢':'⚪'} ${esc(u.name)}<br><i>${esc(u.rank)}</i></div>${u.on&&u.id!=me.id?`<button onclick="call('${u.id}')">📞</button>`:''}${me.rank=='Kamandir'?`<select onchange="act('setrank',{id:'${u.id}',rank:this.value})">${R.map(r=>`<option ${r==u.rank?'selected':''}>${esc(r)}</option>`).join('')}</select>`:''}</div>`).join('')}
+</script><script src="/client.js"></script></body></html>
